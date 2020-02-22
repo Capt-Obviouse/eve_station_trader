@@ -5,11 +5,17 @@ from threading import Thread
 import pyperclip
 from termcolor import colored, cprint
 import os
+import numpy as np
+from terminaltables import SingleTable
 
 
 r = Tk()
 
 r.withdraw()
+
+rows, columns = os.popen("stty size", "r").read().split()
+
+np.set_printoptions(linewidth=columns)
 
 
 def comma_value(max_buy):
@@ -45,7 +51,8 @@ class Main:
         # 0 = Buy | 1 = Sell | 2 = off
         self.mode = 0
         self.competitive_price = 0
-        self.min_margin = 0.10
+        self.margin = 0.10
+        self.min_margin = 0.05
         self.__FINISH = False
 
         self.setup()
@@ -62,7 +69,7 @@ class Main:
         else:
             hr_mode = "Off"
 
-        hr_margin = "{}%".format(self.min_margin * 100)
+        hr_margin = "{}%".format(self.margin * 100)
 
         mode = "Mode: {}".format(hr_mode)
         capital = "Capital: {}".format(self.capital)
@@ -120,13 +127,25 @@ class Main:
         conversion = "{} B".format(round(new_value, 2))
         return conversion
 
-    def calculate_min_sell(self, value):
+    def calculate_cost(self, value):
         margin = Decimal(self.min_margin)
         margin += 1
         value_with_margin = value * margin
         return round(value_with_margin, 2)
 
+    def calculate_margin_sell(self, value):
+        margin = Decimal(self.margin)
+        margin += 1
+        value_with_margin = value * margin
+        return round(value_with_margin, 2)
+
     def calculate_max_buy(self, value):
+        margin = Decimal(self.margin)
+        margin += 1
+        value_with_margin = value / margin
+        return round(value_with_margin, 2)
+
+    def calculate_max_cost(self, value):
         margin = Decimal(self.min_margin)
         margin += 1
         value_with_margin = value / margin
@@ -152,9 +171,11 @@ class Main:
 
     def get_results(self, data):
         value = self.parse_value(data)
-        min_sell = self.calculate_min_sell(value)
-        max_buy = self.calculate_max_buy(value)
-        profit = self.calculate_profit(value, min_sell)
+        margin_sell = self.calculate_margin_sell(value)
+        cost = self.calculate_cost(value)
+        max_margin_buy = self.calculate_max_buy(value)
+        max_cost = self.calculate_max_cost(value)
+        profit = self.calculate_profit(value, margin_sell)
 
         needed_qty = self.calculate_needed_qty(value)
         min_daily_volume = self.calculate_min_daily_volume(needed_qty)
@@ -162,61 +183,49 @@ class Main:
         daily_volume_millions = self.convert_daily_volume_millions(min_daily_volume)
         daily_volume_billions = self.convert_daily_volume_billions(min_daily_volume)
         competitive_price = self.calculate_competitive_price(value)
-        # self.storage = competitive_price
         self.competitive_price = competitive_price
         pyperclip.copy(str(competitive_price))
 
         divider = "=======" * 10
         sub_divider = "_______" * 10
         if self.mode == 0:
+            table_data = [
+                [
+                    "Min Sell",
+                    colored(comma_value(margin_sell), "grey", "on_red", attrs=["bold"]),
+                ],
+                ["Profit Per Unit", comma_value(profit)],
+                ["Cost", comma_value(cost)],
+                ["Competitive Price", comma_value(competitive_price)],
+            ]
+            try:
+                for item in table_data:
+                    print("{:<40}{}\n".format(item[0], item[1]))
+            except Exception as e:
+                print(e)
+
             print(
-                """
-Min Sell:
-    {} ISK\n
-Min Profit Per Unit:
-    {} ISK\n
-Qty:
-    {:,.0f}\n
-{}\n
-Min Volume\n
-    {:,.0f}\n
-    {}\n
-    {}\n
-    {}\n
-{}\n
-Competitive Price:
-    {}\n
-                """.format(
-                    colored(
-                        comma_value(min_sell),
-                        "grey",
-                        "on_red",
-                        attrs=["bold", "underline"],
-                    ),
-                    comma_value(profit),
-                    needed_qty,
+                "{}\n\nQty: {:,.0f}\n\nMin Volume\n{:,.0f}\n{}\n{}\n{}\n".format(
                     sub_divider,
+                    needed_qty,
                     min_daily_volume,
                     daily_volume_thousands,
                     daily_volume_millions,
                     daily_volume_billions,
-                    sub_divider,
-                    comma_value(competitive_price),
                 )
             )
         else:
             try:
                 print(
-                    "{}\n Competitive Price: {}\n\n Max Buy Price: {}\n {}\n".format(
-                        divider,
+                    "Competitive Price: {}\n\nMax Margin Price: {}\n\nMax Cost {}".format(
                         comma_value(competitive_price),
                         colored(
-                            comma_value(max_buy),
+                            comma_value(max_margin_buy),
                             "grey",
                             "on_red",
                             attrs=["bold", "underline"],
                         ),
-                        divider,
+                        comma_value(max_cost),
                     )
                 )
             except Exception as e:

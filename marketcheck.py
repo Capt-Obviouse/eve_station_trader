@@ -3,11 +3,35 @@ from time import sleep
 from decimal import *
 from threading import Thread
 import pyperclip
+from termcolor import colored, cprint
+import os
 
 
 r = Tk()
 
 r.withdraw()
+
+
+def comma_value(max_buy):
+    return format(max_buy, ",")
+
+
+class bcolors:
+
+    HEADER = "\033[95m"
+    OKBLUE = "\033[94m"
+    OKGREEN = "\033[92m"
+    WARNING = "\033[93m"
+    FAIL = "\033[91m"
+    ENDC = "\033[0m"
+
+    def disable(self):
+        self.HEADER = ""
+        self.OKBLUE = ""
+        self.OKGREEN = ""
+        self.WARNING = ""
+        self.FAIL = ""
+        self.ENDC = ""
 
 
 class Main:
@@ -18,12 +42,38 @@ class Main:
         self.storage = ""
         self.order_price = 0
         self.margin_skill = 4
-        # 0 = Buy | 1 = Sell
+        # 0 = Buy | 1 = Sell | 2 = off
         self.mode = 0
         self.competitive_price = 0
+        self.min_margin = 0.10
+        self.__FINISH = False
 
         self.setup()
         self.run()
+
+    def clear_term(self):
+        os.system("cls" if os.name == "nt" else "clear")
+
+    def display_header(self):
+        if self.mode == 0:
+            hr_mode = "Buy"
+        elif self.mode == 1:
+            hr_mode = "Sell"
+        else:
+            hr_mode = "Off"
+
+        hr_margin = "{}%".format(self.min_margin * 100)
+
+        mode = "Mode: {}".format(hr_mode)
+        capital = "Capital: {}".format(self.capital)
+        volume = "Volume Multi: {}".format(self.volume_multiplier)
+        divider = "=======" * 10
+        margin = "Min Margin: {}".format(hr_margin)
+        print(
+            "{}\n{:<2}  {:<2}  {:<2}  {:<2}\n{}\n".format(
+                divider, mode, capital, volume, margin, divider
+            )
+        )
 
     def calculate_order_price(self):
         capital = self.capital * 1000000
@@ -71,13 +121,13 @@ class Main:
         return conversion
 
     def calculate_min_sell(self, value):
-        margin = Decimal(0.10)
+        margin = Decimal(self.min_margin)
         margin += 1
         value_with_margin = value * margin
         return round(value_with_margin, 2)
 
     def calculate_max_buy(self, value):
-        margin = Decimal(0.10)
+        margin = Decimal(self.min_margin)
         margin += 1
         value_with_margin = value / margin
         return round(value_with_margin, 2)
@@ -121,13 +171,10 @@ class Main:
         if self.mode == 0:
             print(
                 """
-{}\n
-{}\n
-{}\n
 Min Sell:
-    {:,.2f} ISK\n
+    {} ISK\n
 Min Profit Per Unit:
-    {:,.2f} ISK\n
+    {} ISK\n
 Qty:
     {:,.0f}\n
 {}\n
@@ -139,13 +186,14 @@ Min Volume\n
 {}\n
 Competitive Price:
     {}\n
-{}\n
                 """.format(
-                    divider,
-                    divider,
-                    divider,
-                    min_sell,
-                    profit,
+                    colored(
+                        comma_value(min_sell),
+                        "grey",
+                        "on_red",
+                        attrs=["bold", "underline"],
+                    ),
+                    comma_value(profit),
                     needed_qty,
                     sub_divider,
                     min_daily_volume,
@@ -153,25 +201,26 @@ Competitive Price:
                     daily_volume_millions,
                     daily_volume_billions,
                     sub_divider,
-                    competitive_price,
-                    divider,
+                    comma_value(competitive_price),
                 )
             )
         else:
-            print(
-                """
-{}\n
-{}\n
-{}\n
-Competitive Price: 
-    {}\n
-Max Buy Price:
-    {}\n
-{}\n
-                """.format(
-                    divider, divider, divider, competitive_price, max_buy, divider
+            try:
+                print(
+                    "{}\n Competitive Price: {}\n\n Max Buy Price: {}\n {}\n".format(
+                        divider,
+                        comma_value(competitive_price),
+                        colored(
+                            comma_value(max_buy),
+                            "grey",
+                            "on_red",
+                            attrs=["bold", "underline"],
+                        ),
+                        divider,
+                    )
                 )
-            )
+            except Exception as e:
+                print(e)
 
     def get_clip_data(self):
         while not r.selection_get(selection="CLIPBOARD"):
@@ -180,6 +229,11 @@ Max Buy Price:
         return result
 
     def setup(self):
+        use_defaults = input("Use Defaults? enter to continue, n to change")
+
+        if use_defaults != "n":
+            return self.calculate_order_price()
+
         self.capital = Decimal(
             input("Please enter a starting capital in millions\n default: 1000\n ")
             or self.capital
@@ -202,38 +256,22 @@ Max Buy Price:
 
     def user_input(self):
         while True:
+            if self.__FINISH:
+                break
             users_input = input("Please enter an option\n")
-            if users_input == "h" or users_input == "help":
-                print(
-                    """
-    Options:
-        q, Q
-            Quit
-        b
-            Change mode to BUY
-        s
-            Change mode to SELL
-        capital
-            Change capital amount
-        orders
-            Change order count
-        volume
-            Change volume multiplier
-        margin
-            Change margin skill level
-        settings
-            List current settings
-                """
-                )
+
             if users_input == "q" or users_input == "Q":
                 print("quitting")
-                quit()
+                self.__FINISH = True
             if users_input == "b":
                 self.mode = 0
                 print("buy mode\n")
             if users_input == "s":
                 self.mode = 1
                 print("sell mode\n")
+            if users_input == "o":
+                self.mode = 2
+                print("Off")
 
             if users_input == "capital":
                 self.capital = Decimal(
@@ -257,6 +295,34 @@ Max Buy Price:
                     or self.margin_skill
                 )
 
+            if users_input:
+                self.clear_term()
+                self.display_header()
+
+            if users_input == "h" or users_input == "help":
+                print(
+                    """
+    Options:
+        q, Q
+            Quit
+        b
+            Change mode to BUY
+        s
+            Change mode to SELL
+        o
+            Off
+        capital
+            Change capital amount
+        orders
+            Change order count
+        volume
+            Change volume multiplier
+        margin
+            Change margin skill level
+        settings
+            List current settings
+                """
+                )
             if users_input == "settings":
                 print(
                     """
@@ -277,7 +343,24 @@ Max Buy Price:
     def clip_data(self):
         t1 = Thread(target=self.user_input)
         t1.start()
+        count = 0
+        minute_in_seconds = 60
+        idle_minutes = 5
+        total_seconds = idle_minutes * minute_in_seconds
         while True:
+            if self.__FINISH:
+                t1.join()
+                self.clear_term()
+                quit()
+            if self.mode == 2:
+                sleep(0.5)
+                continue
+            if count > total_seconds:
+                self.mode = 2
+                count = 0
+                print("Auto Off")
+                continue
+            count += 1
             sleep(0.1)
             result = self.get_clip_data()
             if result == self.storage:
@@ -288,10 +371,14 @@ Max Buy Price:
                 continue
             self.storage = result
             try:
+                self.clear_term()
+                self.display_header()
+
                 self.get_results(result)
             except Exception as e:
                 continue
 
+            count = 0
             print("\nPlease enter an option")
 
     def run(self):
